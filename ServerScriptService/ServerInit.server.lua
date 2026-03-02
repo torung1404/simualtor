@@ -1,5 +1,5 @@
 --[[
-	ServerInit.lua
+	ServerInit.server.lua
 	Main server entry point. Wires up all services, handlers, and remotes.
 	This script runs once when the server starts.
 ]]

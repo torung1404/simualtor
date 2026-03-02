@@ -1,5 +1,5 @@
 --[[
-	ClientInit.lua
+	ClientInit.client.lua
 	Main client entry point. Initializes all controllers and view models.
 ]]
 

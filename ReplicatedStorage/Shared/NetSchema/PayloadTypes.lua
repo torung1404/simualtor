@@ -113,6 +113,32 @@ function PayloadTypes.validateReferral(payload)
 	return true, nil
 end
 
+--- Validate a claim daily quest payload.
+--- @param payload table
+--- @return boolean isValid, string? errorMessage
+function PayloadTypes.validateClaimDailyQuest(payload)
+	if type(payload) ~= "table" then
+		return false, "Payload must be a table"
+	end
+	if type(payload.questId) ~= "string" or payload.questId == "" then
+		return false, "questId must be a non-empty string"
+	end
+	return true, nil
+end
+
+--- Validate a claim season reward payload.
+--- @param payload table
+--- @return boolean isValid, string? errorMessage
+function PayloadTypes.validateClaimSeasonReward(payload)
+	if type(payload) ~= "table" then
+		return false, "Payload must be a table"
+	end
+	if type(payload.tierId) ~= "string" or payload.tierId == "" then
+		return false, "tierId must be a non-empty string"
+	end
+	return true, nil
+end
+
 --- Generic response constructor.
 --- @param ok boolean
 --- @param data table?

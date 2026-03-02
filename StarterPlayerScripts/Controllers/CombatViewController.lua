@@ -100,7 +100,7 @@ function CombatViewController:requestFight(enemyId)
 end
 
 --- Get the last fight result formatted for display.
---- @return table? { won, enemyName, playerPower, coinGained, xpGained, drops }
+--- @return table? { won, enemyName, playerPower, coinGained, xpGained, drops, isCrit, bossInfo, arcUnlocked }
 function CombatViewController:getLastFightResult()
 	if not self._lastFightResult or not self._lastFightResult.ok then
 		return nil
@@ -109,29 +109,53 @@ function CombatViewController:getLastFightResult()
 	local data = self._lastFightResult.data
 	local formattedDrops = {}
 	if data.drops then
-		local ItemsConfig = require(ReplicatedStorage.Shared.Configs.ItemsConfig)
-		for _, itemId in ipairs(data.drops) do
-			local item = ItemsConfig.ById[itemId]
-			if item then
+		for _, drop in ipairs(data.drops) do
+			-- Drops now come as { itemId, name, rarity } from server
+			if type(drop) == "table" then
 				formattedDrops[#formattedDrops + 1] = {
-					itemId = itemId,
-					name = item.name,
-					rarity = item.rarity,
+					itemId = drop.itemId,
+					name = drop.name or drop.itemId,
+					rarity = drop.rarity or "common",
 				}
+			else
+				-- Backwards compat: old format was just itemId strings
+				local ItemsConfig = require(ReplicatedStorage.Shared.Configs.ItemsConfig)
+				local item = ItemsConfig.ById[drop]
+				if item then
+					formattedDrops[#formattedDrops + 1] = {
+						itemId = drop,
+						name = item.name,
+						rarity = item.rarity,
+					}
+				end
 			end
 		end
+	end
+
+	-- Format boss info
+	local bossInfoDisplay = nil
+	if data.bossInfo then
+		bossInfoDisplay = {
+			shieldActive = data.bossInfo.shieldActive or false,
+			enraged = data.bossInfo.enraged or false,
+			mechanics = data.bossInfo.mechanics or {},
+		}
 	end
 
 	return {
 		won = data.won,
 		enemyName = data.enemyName,
 		playerPower = NumberFormat.abbreviate(data.playerPower),
+		effectivePlayerPower = data.effectivePlayerPower and NumberFormat.abbreviate(data.effectivePlayerPower) or nil,
 		enemyPower = NumberFormat.abbreviate(data.enemyPower),
+		effectiveEnemyPower = data.effectiveEnemyPower and NumberFormat.abbreviate(data.effectiveEnemyPower) or nil,
 		coinGained = data.rewards and NumberFormat.abbreviate(data.rewards.coin) or "0",
 		xpGained = data.rewards and NumberFormat.abbreviate(data.rewards.xp) or "0",
 		gemsGained = data.rewards and data.rewards.gems or 0,
 		drops = formattedDrops,
-		bossDefeated = data.bossDefeated or false,
+		isCrit = data.isCrit or false,
+		bossInfo = bossInfoDisplay,
+		arcUnlocked = data.arcUnlocked,
 	}
 end
 

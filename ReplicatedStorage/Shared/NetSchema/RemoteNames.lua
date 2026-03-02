@@ -36,6 +36,9 @@ local RemoteNames = {
 	ClaimDailyReward = "AnimeSimClaimDailyReward",
 	ClaimLoginStreak = "AnimeSimClaimLoginStreak",
 	ClaimSeasonReward = "AnimeSimClaimSeasonReward",
+	GetDailyQuests = "AnimeSimGetDailyQuests",
+	ClaimDailyQuest = "AnimeSimClaimDailyQuest",
+	GetLoginStatus = "AnimeSimGetLoginStatus",
 
 	-- Social
 	SetReferralCode = "AnimeSimSetReferralCode",

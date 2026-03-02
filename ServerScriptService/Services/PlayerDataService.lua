@@ -10,7 +10,7 @@ local TableUtils = require(game.ReplicatedStorage.Shared.Utils.TableUtils)
 local PlayerDataService = {}
 PlayerDataService.__index = PlayerDataService
 
-local CURRENT_SCHEMA_VERSION = 3
+local CURRENT_SCHEMA_VERSION = 4
 local SAVE_INTERVAL = 75 -- seconds between auto-saves
 local MAX_RETRIES = 3
 local RETRY_BASE_DELAY = 1 -- seconds, exponential backoff
@@ -122,6 +122,15 @@ function PlayerDataService._migrate(data)
 		data.daily = data.daily or TableUtils.deepCopy(DEFAULT_DATA.daily)
 		data.settings = data.settings or TableUtils.deepCopy(DEFAULT_DATA.settings)
 		data.schemaVersion = 3
+	end
+
+	-- Migration v3 -> v4: added daily quest fields
+	if data.schemaVersion < 4 then
+		if data.daily then
+			data.daily.activeQuests = data.daily.activeQuests or {}
+			data.daily.questProgress = data.daily.questProgress or {}
+		end
+		data.schemaVersion = 4
 	end
 
 	return data

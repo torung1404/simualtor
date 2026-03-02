@@ -74,8 +74,14 @@ function UIController:init()
 
 	-- Listen for notifications
 	local notificationEvent = remoteFolder:WaitForChild(RemoteNames.Notification)
-	notificationEvent.OnClientEvent:Connect(function(notification)
-		self:_fireEvent("notification", notification)
+	notificationEvent.OnClientEvent:Connect(function(notif)
+		self:_fireEvent("notification", notif)
+	end)
+
+	-- Listen for rare drop announcements
+	local rareDropEvent = remoteFolder:WaitForChild(RemoteNames.RareDropAnnounce)
+	rareDropEvent.OnClientEvent:Connect(function(dropInfo)
+		self:_fireEvent("rareDrop", dropInfo)
 	end)
 end
 
@@ -196,6 +202,30 @@ function UIController:getNextStepHint()
 		}
 	end
 
+	-- Check for unclaimed daily quests
+	local dailyQuests = self._playerState.dailyQuests
+	if dailyQuests and dailyQuests.quests then
+		for _, quest in ipairs(dailyQuests.quests) do
+			if quest.completed and not quest.claimed then
+				return {
+					text = "Claim daily quest reward: " .. quest.description,
+					action = "claimQuest",
+					tabId = "home",
+				}
+			end
+		end
+		-- Check for incomplete daily quests
+		for _, quest in ipairs(dailyQuests.quests) do
+			if not quest.completed then
+				return {
+					text = quest.description .. " (" .. quest.current .. "/" .. quest.required .. ")",
+					action = "dailyQuest",
+					tabId = "home",
+				}
+			end
+		end
+	end
+
 	-- Simple heuristic for next step
 	local wallet = self._playerState.wallet
 	if wallet and wallet.coin > 0 then
@@ -212,6 +242,20 @@ function UIController:getNextStepHint()
 		action = "fight",
 		tabId = "combat",
 	}
+end
+
+--- Get the daily quest status from cached player state.
+--- @return table? { quests = table[] }
+function UIController:getDailyQuests()
+	if not self._playerState then return nil end
+	return self._playerState.dailyQuests
+end
+
+--- Get the login streak status from cached player state.
+--- @return table? { streakDay, nextRewardDay, ... }
+function UIController:getLoginStatus()
+	if not self._playerState then return nil end
+	return self._playerState.loginStatus
 end
 
 return UIController

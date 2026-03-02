@@ -12,6 +12,7 @@ local MemoryStoreService = game:GetService("MemoryStoreService")
 
 -- Shared modules
 local RemoteNames = require(ReplicatedStorage.Shared.NetSchema.RemoteNames)
+local ItemsConfig = require(ReplicatedStorage.Shared.Configs.ItemsConfig)
 
 -- Server services
 local PlayerDataService = require(script.Parent.Services.PlayerDataService)
@@ -23,12 +24,16 @@ local UpgradeService = require(script.Parent.Services.UpgradeService)
 local JobService = require(script.Parent.Services.JobService)
 local TutorialService = require(script.Parent.Services.TutorialService)
 local RankService = require(script.Parent.Services.RankService)
+local DailyQuestService = require(script.Parent.Services.DailyQuestService)
+local LoginStreakService = require(script.Parent.Services.LoginStreakService)
+local NotificationService = require(script.Parent.Services.NotificationService)
 
 -- Remote handlers
 local CombatHandler = require(script.Parent.RemoteHandlers.CombatHandler)
 local EconomyHandler = require(script.Parent.RemoteHandlers.EconomyHandler)
 local JobHandler = require(script.Parent.RemoteHandlers.JobHandler)
 local RankHandler = require(script.Parent.RemoteHandlers.RankHandler)
+local DailyQuestHandler = require(script.Parent.RemoteHandlers.DailyQuestHandler)
 
 ------------------------------------------------------------------------
 -- 1. Instantiate services with dependency injection
@@ -42,12 +47,15 @@ local upgrade = UpgradeService.new(playerData, economy)
 local job = JobService.new(playerData, economy, stateMachine)
 local tutorial = TutorialService.new(playerData, stateMachine)
 local rank = RankService.new(playerData, economy, combat, stateMachine)
+local dailyQuest = DailyQuestService.new(playerData, economy)
+local loginStreak = LoginStreakService.new(playerData, economy)
 
 -- Instantiate handlers
 local combatHandler = CombatHandler.new(combat, antiCheat, tutorial)
 local economyHandler = EconomyHandler.new(upgrade, economy, playerData, antiCheat, tutorial)
 local jobHandler = JobHandler.new(job, antiCheat, tutorial)
 local rankHandler = RankHandler.new(rank, antiCheat)
+local dailyQuestHandler = DailyQuestHandler.new(dailyQuest, loginStreak, antiCheat)
 
 ------------------------------------------------------------------------
 -- 2. Create RemoteEvents and RemoteFunctions
@@ -85,21 +93,76 @@ local requestStateRemote = createRemoteFunction(RemoteNames.RequestState)
 local tutorialAdvanceRemote = createRemoteFunction(RemoteNames.TutorialAdvance)
 local tutorialSkipRemote = createRemoteFunction(RemoteNames.TutorialSkip)
 local updateSettingsRemote = createRemoteFunction(RemoteNames.UpdateSettings)
+local getDailyQuestsRemote = createRemoteFunction(RemoteNames.GetDailyQuests)
+local claimDailyQuestRemote = createRemoteFunction(RemoteNames.ClaimDailyQuest)
+local getLoginStatusRemote = createRemoteFunction(RemoteNames.GetLoginStatus)
 
 -- Events (server -> client)
 local stateUpdateEvent = createRemoteEvent(RemoteNames.StateUpdate)
 local notificationEvent = createRemoteEvent(RemoteNames.Notification)
 local rareDropEvent = createRemoteEvent(RemoteNames.RareDropAnnounce)
 
+-- Initialize notification service with remote references
+local notification = NotificationService.new(remoteFolder)
+notification:init(stateUpdateEvent, notificationEvent, rareDropEvent)
+
 ------------------------------------------------------------------------
 -- 3. Wire up RemoteFunction callbacks
 ------------------------------------------------------------------------
 fightRemote.OnServerInvoke = function(player, payload)
-	return combatHandler:handleFight(player.UserId, payload)
+	local result = combatHandler:handleFight(player.UserId, payload)
+
+	-- Fire notifications for combat results
+	if result.ok and result.data then
+		local fightData = result.data
+
+		-- Track daily quest progress
+		if fightData.won then
+			dailyQuest:recordAction(player.UserId, "kills", 1)
+			dailyQuest:recordAction(player.UserId, "coinEarned", fightData.rewards and fightData.rewards.coin or 0)
+
+			-- Announce rare drops
+			if fightData.drops then
+				for _, drop in ipairs(fightData.drops) do
+					if drop.rarity == "epic" or drop.rarity == "legendary" then
+						notification:announceRareDrop(
+							player.UserId,
+							player.Name,
+							drop.name or drop.itemId,
+							drop.rarity,
+							fightData.enemyName
+						)
+					end
+				end
+			end
+
+			-- Boss kill daily quest tracking
+			if fightData.bossInfo then
+				dailyQuest:recordAction(player.UserId, "bossKill", 1)
+			end
+
+			-- Arc unlock notification
+			if fightData.arcUnlocked then
+				notification:sendArcUnlock(player.UserId, fightData.arcUnlocked.arcName)
+				notification:sendStateUpdate(player.UserId, {
+					progress = playerData:getData(player.UserId).progress,
+				})
+			end
+		end
+	end
+
+	return result
 end
 
 buyUpgradeRemote.OnServerInvoke = function(player, payload)
-	return economyHandler:handleBuyUpgrade(player.UserId, payload)
+	local result = economyHandler:handleBuyUpgrade(player.UserId, payload)
+
+	-- Track daily quest progress
+	if result.ok then
+		dailyQuest:recordAction(player.UserId, "upgrades", 1)
+	end
+
+	return result
 end
 
 sellItemRemote.OnServerInvoke = function(player, payload)
@@ -119,7 +182,17 @@ startJobRemote.OnServerInvoke = function(player, payload)
 end
 
 claimJobRemote.OnServerInvoke = function(player)
-	return jobHandler:handleClaimJob(player.UserId)
+	local result = jobHandler:handleClaimJob(player.UserId)
+
+	-- Track daily quest progress
+	if result.ok then
+		dailyQuest:recordAction(player.UserId, "jobClaims", 1)
+		if result.data and result.data.reward then
+			dailyQuest:recordAction(player.UserId, "coinEarned", result.data.reward)
+		end
+	end
+
+	return result
 end
 
 cancelJobRemote.OnServerInvoke = function(player)
@@ -127,7 +200,14 @@ cancelJobRemote.OnServerInvoke = function(player)
 end
 
 enterRankedRemote.OnServerInvoke = function(player)
-	return rankHandler:handleEnterRanked(player.UserId)
+	local result = rankHandler:handleEnterRanked(player.UserId)
+
+	-- Track daily quest progress
+	if result.ok then
+		dailyQuest:recordAction(player.UserId, "ranked", 1)
+	end
+
+	return result
 end
 
 claimSeasonRewardRemote.OnServerInvoke = function(player, payload)
@@ -151,6 +231,8 @@ requestStateRemote.OnServerInvoke = function(player)
 			tutorial = tutorial:getTutorialState(player.UserId),
 			jobStatus = job:getJobStatus(player.UserId),
 			ranked = rank:getRankedStatus(player.UserId),
+			dailyQuests = dailyQuest:getQuestStatus(player.UserId),
+			loginStatus = loginStreak:getLoginStatus(player.UserId),
 		},
 	}
 end
@@ -182,6 +264,28 @@ updateSettingsRemote.OnServerInvoke = function(player, payload)
 	return PayloadTypes.response(true, data.settings)
 end
 
+getDailyQuestsRemote.OnServerInvoke = function(player)
+	return dailyQuestHandler:handleGetDailyQuests(player.UserId)
+end
+
+claimDailyQuestRemote.OnServerInvoke = function(player, payload)
+	local result = dailyQuestHandler:handleClaimDailyQuest(player.UserId, payload)
+
+	-- Send notification on quest claim
+	if result.ok and result.data then
+		notification:sendRewardNotification(player.UserId, "Daily Quest Reward", {
+			coin = result.data.rewardCoin,
+			points = result.data.rewardPoints,
+		})
+	end
+
+	return result
+end
+
+getLoginStatusRemote.OnServerInvoke = function(player)
+	return dailyQuestHandler:handleGetLoginStatus(player.UserId)
+end
+
 ------------------------------------------------------------------------
 -- 4. Player lifecycle
 ------------------------------------------------------------------------
@@ -195,6 +299,37 @@ Players.PlayerAdded:Connect(function(player)
 	antiCheat:initPlayer(player.UserId)
 	stateMachine:initPlayer(player.UserId, not data.progress.tutorialComplete)
 	tutorial:initPlayer(player.UserId)
+	dailyQuest:initPlayer(player.UserId)
+
+	-- Process login streak and send notifications
+	local loginResult = loginStreak:processLogin(player.UserId)
+	if loginResult.isNewDay then
+		-- Send login streak notification
+		task.defer(function()
+			task.wait(2) -- small delay so client is ready
+
+			if loginResult.welcomeBack then
+				notification:sendWelcomeBack(
+					player.UserId,
+					loginResult.welcomeBack.daysAway,
+					loginResult.welcomeBack
+				)
+			end
+
+			if loginResult.reward then
+				notification:sendLoginStreak(player.UserId, loginResult.streakDay, loginResult.reward)
+			else
+				notification:sendLoginStreak(player.UserId, loginResult.streakDay, nil)
+			end
+
+			-- Send initial state update with all data
+			notification:sendStateUpdate(player.UserId, {
+				wallet = data.wallet,
+				dailyQuests = dailyQuest:getQuestStatus(player.UserId),
+				loginStatus = loginStreak:getLoginStatus(player.UserId),
+			})
+		end)
+	end
 end)
 
 Players.PlayerRemoving:Connect(function(player)
@@ -203,6 +338,8 @@ Players.PlayerRemoving:Connect(function(player)
 	stateMachine:removePlayer(player.UserId)
 	tutorial:removePlayer(player.UserId)
 	job:removePlayer(player.UserId)
+	dailyQuest:removePlayer(player.UserId)
+	loginStreak:removePlayer(player.UserId)
 end)
 
 ------------------------------------------------------------------------
@@ -212,3 +349,4 @@ playerData:startSaveLoop()
 playerData:bindToClose()
 
 print("[AnimeSimulator] Server initialized successfully.")
+print("[AnimeSimulator] Services: PlayerData, StateMachine, AntiCheat, Economy, Combat, Upgrade, Job, Tutorial, Rank, DailyQuest, LoginStreak, Notification")

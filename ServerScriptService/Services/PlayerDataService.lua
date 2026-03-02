@@ -147,28 +147,36 @@ function PlayerDataService:_acquireSessionLock(userId)
 	end
 
 	local key = "session_" .. tostring(userId)
-	local success, _ = pcall(function()
+	local success, result = pcall(function()
 		-- Try to set with expiry; if key exists, another server holds the lock
-		self._memoryStore:SetIfNotExists(key, true, 300) -- 5 minute expiry
+		return self._memoryStore:SetIfNotExists(key, true, 300) -- 5 minute expiry
 	end)
 
 	if success then
-		self._sessionLocks[userId] = true
-		return true
+		-- pcall succeeded: SetIfNotExists returns true if set, false if key existed
+		-- In either case the API worked, so we can trust the result
+		if result ~= false then
+			self._sessionLocks[userId] = true
+			return true
+		end
+
+		-- Key already exists (another server), wait and retry once
+		task.wait(2)
+		local retryOk, retryResult = pcall(function()
+			return self._memoryStore:SetIfNotExists(key, true, 300)
+		end)
+		if retryOk and retryResult ~= false then
+			self._sessionLocks[userId] = true
+			return true
+		end
+		return false
 	end
 
-	-- Lock exists, wait briefly and retry once
-	task.wait(2)
-	success, _ = pcall(function()
-		self._memoryStore:SetIfNotExists(key, true, 300)
-	end)
-
-	if success then
-		self._sessionLocks[userId] = true
-		return true
-	end
-
-	return false
+	-- pcall failed: MemoryStore API error (Studio, network issue, etc.)
+	-- In Studio or when API is unavailable, allow the player in gracefully
+	warn("[PlayerDataService] MemoryStore API unavailable, bypassing session lock for " .. userId)
+	self._sessionLocks[userId] = true
+	return true
 end
 
 --- Release the session lock for a player.

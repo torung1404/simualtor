@@ -6,6 +6,36 @@
 local Controllers = script.Parent.Controllers
 local ViewModels = script.Parent.ViewModels
 
+-- Disable Roblox Default UI
+local StarterGui = game:GetService("StarterGui")
+pcall(function()
+	StarterGui:SetCoreGuiEnabled(Enum.CoreGuiType.All, false)
+end)
+
+-- Lock camera and character movement to ensure pure 2D experience
+local Players = game:GetService("Players")
+local Workspace = game:GetService("Workspace")
+local player = Players.LocalPlayer
+local camera = Workspace.CurrentCamera
+
+if camera then
+	camera.CameraType = Enum.CameraType.Scriptable
+end
+
+local function disableMovement(char)
+	local hum = char:WaitForChild("Humanoid", 5)
+	if hum then
+		hum.WalkSpeed = 0
+		hum.JumpHeight = 0
+		hum.JumpPower = 0
+	end
+end
+
+if player.Character then
+	disableMovement(player.Character)
+end
+player.CharacterAdded:Connect(disableMovement)
+
 -- Controllers
 local UIController = require(Controllers.UIController)
 local CombatViewController = require(Controllers.CombatViewController)

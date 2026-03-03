@@ -10,6 +10,8 @@ local RemoteNames = require(ReplicatedStorage.Shared.NetSchema.RemoteNames)
 local UIController = {}
 UIController.__index = UIController
 
+local MainScreenController = require(script.Parent:WaitForChild("MainScreenController") :: any)
+
 -- Tab definitions with unlock requirements
 local TAB_DEFINITIONS = {
 	{ id = "combat",  name = "Combat",  icon = "rbxassetid://0", defaultUnlocked = true },
@@ -83,6 +85,9 @@ function UIController:init()
 	rareDropEvent.OnClientEvent:Connect(function(dropInfo)
 		self:_fireEvent("rareDrop", dropInfo)
 	end)
+	
+	-- Mount the Main Screen UI
+	MainScreenController:Init()
 end
 
 --- Switch to a tab.
@@ -173,6 +178,16 @@ function UIController:_handleStateUpdate(update)
 			self._playerState[key] = value
 		end
 	end
+	
+	-- Update HUD
+	if self._playerState.wallet then
+		MainScreenController:updateTopNav(
+			self._playerState.wallet.coin or 0,
+			self._playerState.wallet.gems or 0,
+			"Level " .. (self._playerState.stats and self._playerState.stats.highestPower or 0)
+		)
+	end
+	
 	self:_fireEvent("stateUpdated", update)
 end
 

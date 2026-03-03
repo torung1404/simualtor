@@ -144,10 +144,16 @@ fightRemote.OnServerInvoke = function(player, payload)
 			-- Arc unlock notification
 			if fightData.arcUnlocked then
 				notification:sendArcUnlock(player.UserId, fightData.arcUnlocked.arcName)
-				notification:sendStateUpdate(player.UserId, {
-					progress = playerData:getData(player.UserId).progress,
-				})
 			end
+			
+			-- Bắn StateUpdate
+			local currentData = playerData:getData(player.UserId)
+			notification:sendStateUpdate(player.UserId, {
+				wallet = currentData.wallet,
+				stats = currentData.stats,
+				inventory = currentData.inventory,
+				progress = currentData.progress,
+			})
 		end
 	end
 
@@ -160,25 +166,63 @@ buyUpgradeRemote.OnServerInvoke = function(player, payload)
 	-- Track daily quest progress
 	if result.ok then
 		dailyQuest:recordAction(player.UserId, "upgrades", 1)
+		
+		-- Bắn StateUpdate
+		local currentData = playerData:getData(player.UserId)
+		notification:sendStateUpdate(player.UserId, {
+			wallet = currentData.wallet,
+			upgrades = currentData.upgrades,
+			stats = currentData.stats,
+		})
 	end
 
 	return result
 end
 
 sellItemRemote.OnServerInvoke = function(player, payload)
-	return economyHandler:handleSellItem(player.UserId, payload)
+	local result = economyHandler:handleSellItem(player.UserId, payload)
+	if result.ok then
+		local currentData = playerData:getData(player.UserId)
+		notification:sendStateUpdate(player.UserId, {
+			wallet = currentData.wallet,
+			inventory = currentData.inventory,
+		})
+	end
+	return result
 end
 
 equipItemRemote.OnServerInvoke = function(player, payload)
-	return economyHandler:handleEquipItem(player.UserId, payload)
+	local result = economyHandler:handleEquipItem(player.UserId, payload)
+	if result.ok then
+		local currentData = playerData:getData(player.UserId)
+		notification:sendStateUpdate(player.UserId, {
+			inventory = currentData.inventory,
+		})
+	end
+	return result
 end
 
 unequipItemRemote.OnServerInvoke = function(player, payload)
-	return economyHandler:handleUnequipItem(player.UserId, payload)
+	local result = economyHandler:handleUnequipItem(player.UserId, payload)
+	if result.ok then
+		local currentData = playerData:getData(player.UserId)
+		notification:sendStateUpdate(player.UserId, {
+			inventory = currentData.inventory,
+		})
+	end
+	return result
 end
 
 startJobRemote.OnServerInvoke = function(player, payload)
-	return jobHandler:handleStartJob(player.UserId, payload)
+	local result = jobHandler:handleStartJob(player.UserId, payload)
+	if result.ok then
+		local currentData = playerData:getData(player.UserId)
+		notification:sendStateUpdate(player.UserId, {
+			jobs = currentData.jobs,
+			jobStatus = job:getJobStatus(player.UserId),
+		})
+	end
+	return result
 end
 
 claimJobRemote.OnServerInvoke = function(player)
@@ -190,13 +234,28 @@ claimJobRemote.OnServerInvoke = function(player)
 		if result.data and result.data.reward then
 			dailyQuest:recordAction(player.UserId, "coinEarned", result.data.reward)
 		end
+		
+		local currentData = playerData:getData(player.UserId)
+		notification:sendStateUpdate(player.UserId, {
+			wallet = currentData.wallet,
+			jobs = currentData.jobs,
+			jobStatus = job:getJobStatus(player.UserId),
+		})
 	end
 
 	return result
 end
 
 cancelJobRemote.OnServerInvoke = function(player)
-	return jobHandler:handleCancelJob(player.UserId)
+	local result = jobHandler:handleCancelJob(player.UserId)
+	if result.ok then
+		local currentData = playerData:getData(player.UserId)
+		notification:sendStateUpdate(player.UserId, {
+			jobs = currentData.jobs,
+			jobStatus = job:getJobStatus(player.UserId),
+		})
+	end
+	return result
 end
 
 enterRankedRemote.OnServerInvoke = function(player)

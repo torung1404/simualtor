@@ -28,7 +28,7 @@ local DEFAULT_DATA = {
 	progress = {
 		currentArcId = "arc_1",
 		unlockedArcs = { "arc_1" },
-		unlockedTabs = { "combat" },
+		unlockedTabs = { "combat", "home", "train", "fish", "ranked", "items" },
 		tutorialStep = 1,
 		tutorialComplete = false,
 	},
